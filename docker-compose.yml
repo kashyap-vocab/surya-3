@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+
+  llm-backend:
+    image: dronavocab/llm_surya3:v1
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: surya3-llm-backend
+
+    env_file: .env
+
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+      MODEL: ${MODEL}
+
+    volumes:
+      - model_cache:/models
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  # ── Wrapper ───────────────────────────────────────────────────────────────
+  surya-api:
+    image: dronavocab/llm_surya3:wrapper
+
+    build:
+      context: .
+      dockerfile: Dockerfile.wrapper
+
+    container_name: surya3-api
+
+    ports:
+      - "9000:9000"
+
+    environment:
+      INTERNAL_LLM_URL: http://llm-backend:7000/v1/chat/completions
+      INTERNAL_MODEL: surya-3
+      PUBLIC_MODEL_NAME: surya-3
+      BACKEND_IDENTITY: "Surya AI"
+      WRAPPER_PORT: "9000"
+      LOG_FILE: /app/logs/requests.log
+
+    volumes:
+      - ./logs:/app/logs
+
+    depends_on:
+      llm-backend:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  model_cache:
+    driver: local
