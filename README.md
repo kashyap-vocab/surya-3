@@ -1,203 +1,153 @@
-LLM Wrapper (llama.cpp) — README
+# Surya AI LLM Proxy & Backend
 
-## What this repo contains
+This repository contains a full stack application for running a secure, identity-masked Large Language Model (LLM) API. It uses `llama.cpp` for high-performance inference and a FastAPI-based wrapper to ensure the safety and anonymity of the internal model.
 
-- `wrapper.py` — A FastAPI wrapper that proxies client requests and hides the real upstream model identity. It exposes OpenAI-compatible endpoints: `/v1/chat/completions`, `/v1/models`, `/health`, and `/stats`.
-- `Dockerfile` — (expected) Dockerfile for the LLM (llama.cpp-based) server. Edit as needed for your llama.cpp setup.
-- `Dockerfile.wrapper` — Dockerfile for the wrapper service (runs `wrapper.py`).
-- `docker-compose.yml` — Optional compose file (you can use the included file or the example below).
-- `requirements.txt` and `requirements-wrapper.txt` — Python dependencies used by the services.
+## Features
 
-Goal: Build two separate Docker images — one running your llama.cpp-based LLM server (that exposes an OpenAI-compatible `/v1/chat/completions` endpoint) and one running the wrapper (`wrapper.py`) that forwards requests to the LLM and masks the model name.
+- **High-Performance Inference**: Uses `llama.cpp` to run quantized models (GGUF format) efficiently on either CPU or GPU.
+- **Identity Masking**: The FastAPI wrapper hides the true identity of the model (e.g., Qwen, Llama, Mistral) and presents it purely as `surya-3`.
+- **Probe Protection**: Automatically detects and blocks attempts by users to probe the model for its system prompt or internal model name.
+- **Data Sanitization**: Strips OpenAI-related headers and scrubs sensitive keywords from the LLM's output.
+- **Automated Logging**: All API requests and LLM responses are securely and automatically logged into daily rotating JSON files (`requests.log` and `errors.log`).
+- **OpenAPI / Swagger UI**: Built-in Swagger documentation available at `/docs` to easily test and explore the API.
+- **Code Obfuscation**: The wrapper Python code is compiled into a C-extension binary (`.so`) using Cython during the Docker build process, completely hiding the source code in the final runtime container.
 
-## Quick overview and contract
+## Application Architecture
 
-- Inputs: Client sends POST /v1/chat/completions with a JSON body containing `messages` (a non-empty list).
-- Outputs: Wrapper returns the upstream LLM response with the real model name redacted and replaced with `PUBLIC_MODEL_NAME`.
-- Error modes: 503 if backend unreachable, 4xx for invalid requests, upstream 5xx/4xx proxied as errors.
+1.  **Wrapper Service (`surya-api`)**:
+    -   Runs on port `9000`.
+    -   Intercepts user requests, applies system guardrails, blocks malicious probes, and forwards the cleaned request to the backend.
+    -   Logs every interaction to the mounted `/logs` directory.
+2.  **LLM Backend (`surya3-llm-backend`)**:
+    -   Runs on port `8002` (internal only).
+    -   Powered by `llama.cpp`. Currently configured to run `bartowski/Qwen2.5-7B-Instruct-GGUF`.
+    -   Automatically downloads the model from Hugging Face on the first run.
 
-The wrapper enforces a few safety behaviors (probe detection, sensitive-pattern redaction). See "Environment variables" below to control behavior.
+## Prerequisites
 
-## Required environment variables (wrapper)
+- **Docker** and **Docker Compose** installed.
+- (Optional but recommended) NVIDIA GPU with proper Docker/WSL configuration for hardware acceleration.
+- A **Hugging Face Access Token** (Read permissions).
 
-Set these for the wrapper container; reasonable defaults are used in `wrapper.py`, but you should set them explicitly in production:
+## Quick Start Guide
 
-- `INTERNAL_LLM_URL` — The full URL (including path) where the llama.cpp server exposes the OpenAI-compatible completions endpoint. Example: `http://llm:7000/v1/chat/completions` or `http://192.168.0.42:7000/v1/chat/completions`.
-- `INTERNAL_MODEL` — The name/key of the model to pass to the upstream server. For llama.cpp-based servers this may be the identifier the server expects (for instance the filename or model id used by your server).
-- `PUBLIC_MODEL_NAME` — What the wrapper returns to clients as the model name (e.g., `surya-01`).
-- `BACKEND_IDENTITY` — The identity string to present if the model is probed (e.g., `LLaMA-like` or `DONT KNOW`). Used inside the `SYSTEM_GUARD` default.
-- `SYSTEM_GUARD` — Optional system guard content (string). When set, it gets prepended as instructions to the model to avoid revealing internal details. If you want the wrapper to preserve complete fidelity to upstream, unset/empty this.
-- `LOG_FILE` — Path for rotating logs (default: `./logs/requests.log`).
-- `LOG_LEVEL` — Logging level (e.g., `INFO`, `DEBUG`).
-- `WRAPPER_PORT` — Port for the wrapper server (default in `wrapper.py` is `9001`).
+### 1. Configure Hugging Face Token
 
-Important: `wrapper.py` requires that incoming requests include `messages` as a non-empty list. The wrapper will return HTTP 400 if that field is missing or invalid.
+The backend needs to download the model weights from Hugging Face. You must provide a valid read token.
 
-## Build the images
+1.  Create an account at [huggingface.co](https://huggingface.co) and generate an Access Token (Settings -> Access Tokens).
+2.  In the root of this project, create or open the `.env` file.
+3.  Add your token:
+    ```env
+    HF_TOKEN=hf_your_actual_token_here
+    ```
 
-Below are the minimal docker build commands. The repository already contains `Dockerfile` and `Dockerfile.wrapper`; adapt them if your LLM server uses a different base image or servable.
+### 2. Build and Run the Application
 
-Build the LLM (llama.cpp) image (example tag `llm-llamacpp`):
-
-```bash
-# from repo root
-docker build -f Dockerfile -t llm-llamacpp:latest .
-```
-
-Build the wrapper image (uses `Dockerfile.wrapper`):
-
-```bash
-docker build -f Dockerfile.wrapper -t llm-wrapper:latest .
-```
-
-If you don't have those Dockerfiles or want a quick Python-only wrapper image, a minimal `Dockerfile.wrapper` should install `requirements-wrapper.txt` and run `uvicorn wrapper:app --host 0.0.0.0 --port $WRAPPER_PORT`.
-
-## Run locally with `docker run`
-
-This example assumes the LLM server listens on port 7000 inside its container and exposes a `/v1/chat/completions` endpoint.
-
-1) Start the LLM container (replace with your own runtime for llama.cpp server):
-
-```bash
-docker run -d --name llm -p 7000:7000 llm-llamacpp:latest
-```
-
-2) Start the wrapper container and point it at the LLM by URL.
-
-If both containers are on the same Docker network (recommended), use the container name as hostname (e.g. `http://llm:7000/...`). When running with `--network` you can omit `-p` for internal-only wiring or expose the wrapper port to your host.
-
-Example (exposes wrapper to host port 8001):
-
-```bash
-docker run -d --name llm-wrapper \
-  --link llm:llm \
-  -p 8001:9001 \
-  -e INTERNAL_LLM_URL="http://llm:7000/v1/chat/completions" \
-  -e INTERNAL_MODEL="your-llama-model-id" \
-  -e PUBLIC_MODEL_NAME="surya-01" \
-  -e BACKEND_IDENTITY="LLaMA-like" \
-  -e WRAPPER_PORT=9001 \
-  llm-wrapper:latest
-```
-
-Notes:
-- The wrapper's default port inside the container is controlled by `WRAPPER_PORT`. `wrapper.py` uses `uvicorn.run(..., port=int(os.environ.get("WRAPPER_PORT", "9001")))` when run directly.
-- Use `--link` or better, a user-defined Docker network to resolve `llm` by name.
-
-## Example docker-compose (recommended)
-
-You can create a `docker-compose.override.yml` or use the provided `docker-compose.yml`. Here is a minimal example you can adapt:
-
-```yaml
-version: "3.8"
-services:
-  llm:
-    image: llm-llamacpp:latest
-    container_name: llm
-    # map host port if you want to reach it from outside
-    ports:
-      - "7000:7000"
-    # environment, volumes and command depend on how you expose the llama.cpp server
-
-  wrapper:
-    image: llm-wrapper:latest
-    container_name: llm-wrapper
-    ports:
-      - "8001:9001"  # expose wrapper to host: clients connect to 8001
-    environment:
-      INTERNAL_LLM_URL: "http://llm:7000/v1/chat/completions"
-      INTERNAL_MODEL: "your-llama-model-id"
-      PUBLIC_MODEL_NAME: "surya-01"
-      BACKEND_IDENTITY: "LLaMA-like"
-      WRAPPER_PORT: "9001"
-    depends_on:
-      - llm
-    networks:
-      - llm-net
-
-networks:
-  llm-net:
-    driver: bridge
-```
-
-Run both services:
+Open your terminal in the project directory and run:
 
 ```bash
 docker-compose up --build -d
 ```
 
-## API examples (try it)
+### 3. Monitor the Boot Process
 
-List models (quick check wrapper identity):
+**Important**: Because the model file is several Gigabytes, it will take some time to download on the very first run.
 
-```bash
-curl -s http://localhost:8001/v1/models | jq
-```
-
-Chat completion (non-streaming):
+Check the backend logs to monitor the download progress:
 
 ```bash
-curl -s -X POST http://localhost:8001/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Hello"}], "stream": false}' | jq
+docker logs -f surya3-llm-backend
 ```
 
-Streaming example (server must support streaming):
+Wait until the download completes and you see a message similar to: `HTTP server listening, hostname: 0.0.0.0, port: 8002`. Press `Ctrl+C` to exit the log view.
 
-```bash
-curl -N -X POST http://localhost:8001/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Stream me"}], "stream": true}'
+### 4. Test the API via Swagger UI
+
+Once the backend is fully loaded, open your web browser and navigate to:
+
+👉 **http://localhost:9000/docs**
+
+From the Swagger UI, you can test the `GET /v1/models` and `POST /v1/chat/completions` endpoints.
+
+Alternatively, you can test it via PowerShell/cURL:
+
+**PowerShell Example:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:9000/v1/chat/completions" `
+  -Method Post `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body '{"messages": [{"role": "user", "content": "Write a short haiku about coding"}], "stream": false}' | ConvertTo-Json -Depth 5
 ```
 
-## What `wrapper.py` expects from the upstream LLM
+### 5. Check the Logs
 
-- An OpenAI-compatible JSON API under the URL you set in `INTERNAL_LLM_URL` (the wrapper POSTs the same `messages` and additional fields such as `temperature`, `max_tokens`, etc.).
-- For streaming, a server that returns Server-Sent Events (SSE) with lines that start with `data: ` and contain JSON.
+After sending requests, you can view the detailed logs on your host machine.
+Navigate to the `logs/` directory in your project root.
+-   `requests.log` contains detailed JSON entries for every request, including token usage, input prompts, and output text.
+-   `errors.log` contains blocked probe attempts and system errors.
 
-If your llama.cpp toolchain doesn't expose an OpenAI-compatible REST interface natively, you will need a small adaptor service (or use a project that already exposes such an interface) that accepts the same request shape and translates to llama.cpp calls.
+## Switching Between CPU and GPU
 
-## Logs and diagnostics
+The repository is configured to run on **CPU by default** for maximum compatibility. You can easily switch to GPU acceleration by editing the `.env` file.
 
-- Default log file: `./logs/requests.log` (rotates daily). Check `logs/errors.log` for warnings and probe events.
-- Health: `GET /health` should return `{ "status": "ok" }`.
-- Stats: `GET /stats` will show daily counts and totals.
-
-## Troubleshooting
-
-- Backend unreachable (503): Verify `INTERNAL_LLM_URL` is correct and the llama.cpp server is up. If using Docker, ensure both containers share a network and use service name resolution (no host firewall blocking).
-- Probing blocked: The wrapper detects several phrases (see `PROBE_PHRASES` in `wrapper.py`) and returns a canned response. You can tune `PROBE_PHRASES` or `SYSTEM_GUARD` in the environment if desired.
-- Model-name leakage: `SENSITIVE_PATTERNS` in `wrapper.py` is used to redact model names from upstream output. You can edit that regex if your upstream reports other identifiers.
-
-## Security and production notes
-
-- Keep `SYSTEM_GUARD` conservative if you must prevent identity leakage. However, adding guard text may slightly change outputs — balance safety vs fidelity.
-- Run the wrapper behind TLS/HTTPS or a reverse proxy in production.
-- Logs may contain chat content. Rotate and secure logs appropriately.
-
-## Example minimal `Dockerfile.wrapper`
-
-If you need a minimal wrapper Dockerfile for reference (do NOT overwrite your existing file unless you intend to):
-
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY requirements-wrapper.txt ./
-RUN pip install --no-cache-dir -r requirements-wrapper.txt
-COPY wrapper.py ./
-EXPOSE 9001
-CMD ["/usr/local/bin/uvicorn", "wrapper:app", "--host", "0.0.0.0", "--port", "9001", "--proxy-headers"]
+### Running on CPU (Default)
+In your `.env` file, ensure the values are set for CPU:
+```env
+# 0 means CPU only
+N_GPU_LAYERS=0
+# Empty means no flash attention
+FLASH_ATTN=
 ```
 
-## Final checklist
+### Running on GPU (For maximum speed)
+1. Open your `.env` file and change the variables to enable GPU offloading and flash attention:
+   ```env
+   # Offload all layers to GPU
+   N_GPU_LAYERS=999
+   # Enable flash attention
+   FLASH_ATTN="--flash-attn on"
+   ```
+2. Open `docker-compose.yml` and uncomment the `deploy` block under the `llm-backend` service so Docker allocates the GPU:
+   ```yaml
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+   ```
+3. Rebuild the containers to apply the changes:
+   ```bash
+   docker-compose up --build -d
+   ```
 
-- [ ] Ensure your llama.cpp-based server exposes a compatible `/v1/chat/completions` endpoint.
-- [ ] Set `INTERNAL_LLM_URL` and `INTERNAL_MODEL` in the wrapper environment.
-- [ ] Build and run the two images as separate containers (or via docker-compose).
-- [ ] Test with `GET /health`, `GET /v1/models` and a `POST /v1/chat/completions`.
+## Running on Google Cloud Platform (GCP)
 
-If you'd like, I can:
-- Provide a complete, tested `Dockerfile` for an example llama.cpp server adapter (I will need details about which wrapper or adapter you intend to use), or
-- Generate a `docker-compose.yml` tailored to your environment and desired ports.
+This application is fully containerized and cloud-ready. You can easily deploy it to GCP.
 
-Completion summary: Added this `README.md` with build/run instructions, environment variables, examples, and troubleshooting tips. Follow the steps above to build two separate Docker images (LLM + wrapper) and run them together.
+### Option A: Compute Engine (Recommended for GPU)
+If you want to use GPUs for fast inference:
+1.  Create a VM instance in Compute Engine with a GPU attached (e.g., NVIDIA L4 or T4).
+2.  Ensure you select an OS image with Docker and NVIDIA drivers pre-installed (e.g., "Deep Learning VM").
+3.  Clone this repository onto the VM.
+4.  Configure the repository for GPU (see "Running on GPU" above).
+5.  Run `docker-compose up --build -d`.
+6.  Ensure your VPC Firewall allows inbound TCP traffic on port `9000`.
+
+### Option B: Cloud Run (CPU Only)
+If you do not need a GPU and want a fully managed environment:
+1.  Build and push the two container images to Google Artifact Registry using Google Cloud Build.
+2.  Deploy the `llm-backend` image as a Cloud Run service (ensure it is strictly internal and allocate sufficient memory, e.g., 8GB+).
+3.  Deploy the `wrapper` image as a public Cloud Run service, setting the `INTERNAL_LLM_URL` environment variable to the internal URL of the backend service.
+
+## Configuration & Customization
+
+You can customize the application behavior by modifying the environment variables in `docker-compose.yml`:
+
+-   `INTERNAL_MODEL`: The actual model name you are running (e.g., `Qwen2.5-7B-Instruct-Q4_K_M.gguf`).
+-   `PUBLIC_MODEL_NAME`: The name the wrapper will present to users (e.g., `surya-3`).
+-   `BACKEND_IDENTITY`: The identity the system guard will claim if probed (e.g., `Surya AI`).
+
+To change the model entirely, update the `CMD` arguments in the `Dockerfile` to point to a different Hugging Face repository and GGUF file.

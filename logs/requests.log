@@ -1,0 +1,7 @@
+{"event": "startup", "internal_url": "http://llm-backend:8002/v1/chat/completions", "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf", "ts": "2026-05-17T19:16:43.406676+00:00"}
+{"event": "startup", "internal_url": "http://llm-backend:8002/v1/chat/completions", "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf", "ts": "2026-05-17T19:26:23.330550+00:00"}
+{"event": "startup", "internal_url": "http://llm-backend:8002/v1/chat/completions", "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf", "ts": "2026-05-17T19:38:28.127810+00:00"}
+{"event": "startup", "internal_url": "http://llm-backend:8002/v1/chat/completions", "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf", "ts": "2026-05-17T19:39:51.599550+00:00"}
+{"event": "startup", "internal_url": "http://llm-backend:8002/v1/chat/completions", "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf", "ts": "2026-05-17T19:41:23.109722+00:00"}
+{"event": "startup", "internal_url": "http://llm-backend:8002/v1/chat/completions", "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf", "ts": "2026-05-17T19:42:15.382298+00:00"}
+{"event": "startup", "internal_url": "http://llm-backend:8002/v1/chat/completions", "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf", "ts": "2026-05-17T19:43:59.080668+00:00"}

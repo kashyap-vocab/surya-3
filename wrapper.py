@@ -13,11 +13,12 @@ import uuid
 import logging
 from datetime import datetime, timezone
 from logging.handlers import TimedRotatingFileHandler
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Body
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 # ============== Configuration ==============
 # Upstream LLM (your actual model)
@@ -255,21 +256,62 @@ def sanitize_response(data: dict) -> dict:
         data["choices"] = sanitized
     return data
 
+# ============== API Models ==============
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="The role of the message author (e.g. 'user', 'assistant').")
+    content: str = Field(..., description="The contents of the message.")
 
+class ChatCompletionRequest(BaseModel):
+    messages: List[ChatMessage] = Field(..., description="A list of messages comprising the conversation so far.")
+    stream: Optional[bool] = Field(False, description="If set, partial message deltas will be sent, like in ChatGPT.")
+    temperature: Optional[float] = Field(0.7, description="What sampling temperature to use, between 0 and 2.")
+    max_tokens: Optional[int] = Field(None, description="The maximum number of tokens to generate in the chat completion.")
+
+class ModelData(BaseModel):
+    id: str
+    object: str
+    created: int
+    owned_by: str
+
+class ModelListResponse(BaseModel):
+    object: str = Field("list", description="The object type, which is always 'list'")
+    data: List[ModelData] = Field(..., description="A list of model objects.")
+
+class StatsResponse(BaseModel):
+    today: str = Field(..., description="Today's date in YYYY-MM-DD format.")
+    calls_today: int = Field(..., description="Number of API calls made today.")
+    total_calls: int = Field(..., description="Total number of API calls made.")
+    daily_breakdown: Dict[str, int] = Field(..., description="A breakdown of calls per day.")
+
+class HealthResponse(BaseModel):
+    status: str = Field(..., description="The status of the service.")
+
+# ============== Endpoints ==============
 @app.post("/v1/chat/completions")
-async def secure_chat(request: Request):
+async def secure_chat(
+    request: Request,
+    chat_req: ChatCompletionRequest = Body(
+        ...,
+        examples=[{
+            "messages": [
+                {"role": "user", "content": "Write a short haiku about programming."}
+            ],
+            "stream": False,
+            "temperature": 0.7
+        }]
+    )
+):
+    """
+    Creates a model response for the given chat conversation.
+    Proxies to the backend LLM while masking the identity and sanitizing outputs.
+    """
     req_id = uuid.uuid4().hex[:8]
     t0 = time.monotonic()
     client_ip = request.client.host if request.client else None
     _record_call()
 
-    try:
-        body = await request.json()
-    except json.JSONDecodeError:
-        raw = (await request.body()).decode(errors="replace")
-        if not raw.strip():
-            raise HTTPException(status_code=400, detail="Empty request body")
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    # Reconstruct the original body dictionary for compatibility with existing logic
+    body = chat_req.model_dump(exclude_unset=True)
 
     user_messages: List[Dict[str, Any]] = body.get("messages") or []
     if not isinstance(user_messages, list) or len(user_messages) == 0:
@@ -375,7 +417,7 @@ async def secure_chat(request: Request):
     return sanitize_response(data)
 
 
-@app.get("/v1/models")
+@app.get("/v1/models", response_model=ModelListResponse)
 async def list_models():
     """Return a single model so clients don't see the real model name."""
     return {
@@ -391,8 +433,9 @@ async def list_models():
     }
 
 
-@app.get("/stats")
+@app.get("/stats", response_model=StatsResponse)
 async def stats():
+    """Returns analytics and daily usage statistics of the API."""
     with _stats_lock:
         counts = dict(_daily_counts)
     today = _current_day()
@@ -404,8 +447,9 @@ async def stats():
     }
 
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health():
+    """Simple healthcheck endpoint."""
     return {"status": "ok"}
 
 

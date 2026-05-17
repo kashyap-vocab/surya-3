@@ -14,27 +14,25 @@ services:
 
     environment:
       HF_TOKEN: ${HF_TOKEN}
-      MODEL: ${MODEL}
+      N_GPU_LAYERS: ${N_GPU_LAYERS:-0}
+      FLASH_ATTN: ${FLASH_ATTN:-}
 
     volumes:
       - model_cache:/models
 
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
     restart: unless-stopped
 
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 120s
+    # If you are running on a machine with an NVIDIA GPU and have the NVIDIA Container Toolkit installed,
+    # uncomment the following `deploy` block to allow the container to access the GPU.
+    # Note: Even if you uncomment this, the model will run on CPU unless you also set N_GPU_LAYERS=999 in the .env file.
+    
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
 
   # ── Wrapper ───────────────────────────────────────────────────────────────
   surya-api:
@@ -50,8 +48,9 @@ services:
       - "9000:9000"
 
     environment:
-      INTERNAL_LLM_URL: http://llm-backend:7000/v1/chat/completions
-      INTERNAL_MODEL: surya-3
+      # Updated to use the new port 8002 that the llama.cpp server is running on
+      INTERNAL_LLM_URL: http://llm-backend:8002/v1/chat/completions
+      INTERNAL_MODEL: Qwen2.5-7B-Instruct-Q4_K_M.gguf
       PUBLIC_MODEL_NAME: surya-3
       BACKEND_IDENTITY: "Surya AI"
       WRAPPER_PORT: "9000"
@@ -61,17 +60,9 @@ services:
       - ./logs:/app/logs
 
     depends_on:
-      llm-backend:
-        condition: service_healthy
+      - llm-backend
 
     restart: unless-stopped
-
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
 volumes:
   model_cache:
