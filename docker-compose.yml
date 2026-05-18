@@ -26,13 +26,13 @@ services:
     # uncomment the following `deploy` block to allow the container to access the GPU.
     # Note: Even if you uncomment this, the model will run on CPU unless you also set N_GPU_LAYERS=999 in the .env file.
     
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # ── Wrapper ───────────────────────────────────────────────────────────────
   surya-api:
@@ -50,7 +50,7 @@ services:
     environment:
       # Updated to use the new port 8002 that the llama.cpp server is running on
       INTERNAL_LLM_URL: http://llm-backend:8002/v1/chat/completions
-      INTERNAL_MODEL: Qwen2.5-7B-Instruct-Q4_K_M.gguf
+      INTERNAL_MODEL: ${MODEL_ID}
       PUBLIC_MODEL_NAME: surya-3
       BACKEND_IDENTITY: "Surya AI"
       WRAPPER_PORT: "9000"
