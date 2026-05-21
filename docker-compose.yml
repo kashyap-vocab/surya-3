@@ -22,9 +22,6 @@ services:
 
     restart: unless-stopped
 
-    # If you are running on a machine with an NVIDIA GPU and have the NVIDIA Container Toolkit installed,
-    # uncomment the following `deploy` block to allow the container to access the GPU.
-    # Note: Even if you uncomment this, the model will run on CPU unless you also set N_GPU_LAYERS=999 in the .env file.
     
     deploy:
       resources:
