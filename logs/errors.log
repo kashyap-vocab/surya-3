@@ -1,6 +1,0 @@
-{"event": "upstream_error", "req_id": "4c9ec10f", "status": 503, "detail": "{\"error\":{\"code\":503,\"message\":\"Loading model\",\"type\":\"unavailable_error\"}}", "elapsed_ms": 29, "ts": "2026-05-17T19:20:54.400120+00:00"}
-{"event": "upstream_error", "req_id": "c117efdf", "status": 503, "detail": "{\"error\":{\"code\":503,\"message\":\"Loading model\",\"type\":\"unavailable_error\"}}", "elapsed_ms": 11, "ts": "2026-05-17T19:21:32.727366+00:00"}
-{"event": "upstream_error", "req_id": "bd326ac3", "status": 503, "detail": "{\"error\":{\"code\":503,\"message\":\"Loading model\",\"type\":\"unavailable_error\"}}", "elapsed_ms": 16, "ts": "2026-05-17T19:26:46.019445+00:00"}
-{"event": "upstream_error", "req_id": "4bc49df2", "status": 503, "detail": "{\"error\":{\"code\":503,\"message\":\"Loading model\",\"type\":\"unavailable_error\"}}", "elapsed_ms": 12, "ts": "2026-05-17T19:27:09.496558+00:00"}
-{"event": "backend_unreachable", "req_id": "2d7d7a94", "url": "http://llm-backend:8002/v1/chat/completions", "elapsed_ms": 7100, "ts": "2026-05-17T19:38:45.679693+00:00"}
-{"event": "backend_unreachable", "req_id": "c737d822", "url": "http://llm-backend:8002/v1/chat/completions", "elapsed_ms": 8013, "ts": "2026-05-17T19:40:08.837974+00:00"}
