@@ -1,5 +1,4 @@
-# We must use the base server image, NOT the cuda image, to ensure it runs cleanly on CPU without NVIDIA drivers.
-FROM ghcr.io/ggerganov/llama.cpp:server-b4202
+FROM ghcr.io/ggerganov/llama.cpp:server-cuda-b4202
 
 EXPOSE 8002
 
@@ -21,12 +20,11 @@ CMD sh -c '\
       --hf-file Qwen2.5-7B-Instruct-Q4_K_M.gguf \
       --host 0.0.0.0 \
       --port 8002 \
-      --n-gpu-layers ${N_GPU_LAYERS:-0} \
+      --n-gpu-layers ${N_GPU_LAYERS:-999} \
       ${FLASH_ATTN} \
-      --ctx-size 8192 \
+      --ctx-size 65536 \
       --parallel 4 \
-      --batch-size 8192 \
-      --ubatch-size 2048 \
-      --threads 16 \
+      --batch-size 4096 \
+      --ubatch-size 1024 \
       --cont-batching \
 '

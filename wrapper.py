@@ -22,11 +22,11 @@ from pydantic import BaseModel, Field
 
 # ============== Configuration ==============
 # Upstream LLM (your actual model)
-INTERNAL_URL = os.environ.get("INTERNAL_LLM_URL", "http://192.168.30.239:7000/v1/chat/completions")
-INTERNAL_MODEL = os.environ.get("INTERNAL_MODEL", "google/gemma-3-4b-it")
+INTERNAL_URL = os.environ.get("INTERNAL_LLM_URL", "http://192.168.30.239:8002/chat/completions")
+INTERNAL_MODEL = os.environ.get("INTERNAL_MODEL", "Qwen2.5-7B-Instruct-Q4_K_M.gguf")
 
 # Public-facing identity (what users see)
-PUBLIC_MODEL_NAME = os.environ.get("PUBLIC_MODEL_NAME", "surya-01")
+PUBLIC_MODEL_NAME = os.environ.get("PUBLIC_MODEL_NAME", "surya-3")
 
 # Optional system guard - set to None or "" to disable (preserves max accuracy)
 # When set, prepends this to prevent model from revealing its identity.
