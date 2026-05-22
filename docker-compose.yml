@@ -20,7 +20,7 @@ services:
     volumes:
       - model_cache:/models
 
-    restart: unless-stopped
+    restart: always
 
     
     deploy:
@@ -59,7 +59,7 @@ services:
     depends_on:
       - llm-backend
 
-    restart: unless-stopped
+    restart: always
 
 volumes:
   model_cache:
